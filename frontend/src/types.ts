@@ -1,3 +1,6 @@
+/** Venue lifecycle state: only "configured" and "warning" are shown in the list. */
+export type VenueState = "new" | "configured" | "disabled" | "warning";
+
 export interface Venue {
   id: string;
   name: string;
@@ -10,6 +13,7 @@ export interface Venue {
   website?: string;
   google_maps_url?: string;
   rating?: number;
+  venue_state?: VenueState;
   default_image_url?: string;
   schedule_url?: string;
   scraping_strategy?: string;

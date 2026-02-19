@@ -192,7 +192,10 @@ async def _upsert_venues(venues: list[dict]) -> tuple[int, int]:
         created_at = venue.pop("created_at")
         result = await db.venues.update_one(
             {"google_place_id": venue["google_place_id"]},
-            {"$set": venue, "$setOnInsert": {"created_at": created_at}},
+            {
+                "$set": venue,
+                "$setOnInsert": {"created_at": created_at, "venue_state": "new"},
+            },
             upsert=True,
         )
         if result.upserted_id:

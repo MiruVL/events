@@ -29,6 +29,7 @@ IGNORE and do NOT extract from:
 - Sidebars or boxes that repeat or highlight a few events
 - Ads, banners, or "other venues" sections
 - Any block that looks like a summary or teaser rather than the main schedule list
+- Events that does not look like an event (e.g, hall rentals, etc.)
 
 For each event from the main schedule only, extract:
 - "title": event/show name (string)
@@ -38,7 +39,7 @@ For each event from the main schedule only, extract:
 - "price": advance ticket price in yen as integer, or null if not found
 - "price_text": original price text as written on the page (string or null)
 - "artists": array of performer/artist names (array of strings, can be empty)
-- "image_url": URL of the main event image or flyer (string or null). Look for img tags near the event info.
+- "image_url": URL of the main event image or flyer (string or null). Look for img tags near the event info. If event has more than one image, use the first one.
 - "detail_url": link to event detail page if present (string or null)
 
 Rules:
@@ -94,7 +95,7 @@ Rules:
 SYSTEM_PROMPT_COMBINED = """You are a data extraction assistant. You extract live music event information from combined content of multiple event detail pages from a Japanese live-house venue.
 
 The content below contains multiple event pages concatenated together, each separated by a marker. Extract ALL events into a single JSON array.
-
+Ignore and do not extract events that does not look like an event (e.g, hall rentals, etc.)
 For each event, extract:
 - "title": event/show name (string)
 - "date": date in YYYY-MM-DD format (string)

@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timezone
 
 from app.db import close_db, get_db
-from app.models import ScrapingStrategy
+from app.models import ScrapingStrategy, VenueState
 from app.pipeline import resolve_schedule_url
 
 
@@ -22,6 +22,7 @@ async def list_venues() -> None:
     now = datetime.now()
     for i, v in enumerate(venues, 1):
         strategy = v.get("scraping_strategy") or "not set"
+        state = v.get("venue_state") or "new"
         schedule = v.get("schedule_url") or "not set"
         instructions = v.get("scraping_instructions") or "not set"
         default_img = v.get("default_image_url") or "not set"
@@ -34,6 +35,7 @@ async def list_venues() -> None:
         custom_kwargs = v.get("custom_kwargs")
 
         print(f"  {i}. {v['name']} (id: {v['_id']})")
+        print(f"     State:            {state}")
         print(f"     Schedule URL:     {schedule}")
         if v.get("schedule_url") and "{" in v["schedule_url"]:
             resolved = resolve_schedule_url(v["schedule_url"], now)
@@ -80,6 +82,13 @@ async def configure_venue(venue_id: str) -> None:
     if not url:
         url = current
 
+    # State
+    current_state = venue.get("venue_state") or "new"
+    states = ", ".join(s.value for s in VenueState)
+    print(f"  State options: {states}")
+    state_input = input(f"  State [{current_state}]: ").strip()
+    venue_state = state_input if state_input else current_state
+
     # Strategy
     current_strat = venue.get("scraping_strategy") or ""
     strategies = ", ".join(s.value for s in ScrapingStrategy)
@@ -125,6 +134,7 @@ async def configure_venue(venue_id: str) -> None:
         script = current_script
 
     update = {
+        "venue_state": venue_state or "new",
         "schedule_url": url or None,
         "scraping_strategy": strat or None,
         "scraping_instructions": instr or None,

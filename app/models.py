@@ -11,6 +11,22 @@ class ScrapingStrategy(str, Enum):
     CUSTOM = "custom"
 
 
+class VenueState(str, Enum):
+    """Lifecycle state of a venue in the system."""
+
+    NEW = "new"
+    """Newly added from Google Maps, not yet configured for scraping."""
+
+    CONFIGURED = "configured"
+    """Scraping config is set and venue is active."""
+
+    DISABLED = "disabled"
+    """Venue is disabled (e.g. temporarily excluded from scraping)."""
+
+    WARNING = "warning"
+    """Configured but flagged for errors or extraction inaccuracy (e.g. by automated checks)."""
+
+
 class GeoLocation(BaseModel):
     """GeoJSON Point for MongoDB 2dsphere index."""
 
@@ -30,6 +46,12 @@ class Venue(BaseModel):
     website: Optional[str] = None
     google_maps_url: Optional[str] = None
     rating: Optional[float] = None
+
+    # Lifecycle state: new (not configured), configured, disabled, warning
+    venue_state: Optional[VenueState] = Field(
+        default=VenueState.NEW,
+        description="new = not yet configured; configured = active; disabled = excluded; warning = flagged for errors/inaccuracy.",
+    )
 
     # Default image for events without a flyer
     default_image_url: Optional[str] = Field(

@@ -9,7 +9,7 @@ from typing import Any
 
 from app.db import close_db, get_db, init_db
 from app.extractor import extract_events, extract_events_combined, extract_links
-from app.models import Event, ScrapingStrategy
+from app.models import Event, ScrapingStrategy, VenueState
 from app.scraper import crawl_detail_pages, crawl_page, crawl_schedule
 
 
@@ -414,11 +414,17 @@ async def scrape_all(*, use_cache: bool = True, months: int | None = None) -> No
     await init_db()
 
     venues = await db.venues.find(
-        {"scraping_strategy": {"$ne": None}}
+        {
+            "scraping_strategy": {"$ne": None},
+            "$or": [
+                {"venue_state": {"$in": [VenueState.CONFIGURED.value, VenueState.WARNING.value]}},
+                {"venue_state": {"$exists": False}},
+            ],
+        }
     ).to_list(100)
 
     if not venues:
-        print("No venues with scraping_strategy configured.")
+        print("No venues with scraping_strategy configured and state configured/warning.")
         print("Run venue_loader first, then configure venues.")
         return
 

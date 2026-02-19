@@ -15,3 +15,4 @@ wheels/
 # Crawl cache
 crawl_cache/
 docs/
+scripts/*

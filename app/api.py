@@ -44,23 +44,26 @@ async def list_venues(
     lng: Optional[float] = Query(None, description="Longitude for geo filter"),
     radius_km: float = Query(10, description="Radius in km for geo filter"),
 ):
-    """List all venues, optionally filtered by proximity to a point."""
+    """List venues that are configured or in warning state (excludes new/disabled)."""
     db = get_db()
 
+    query: dict = {
+        "$or": [
+            {"venue_state": {"$in": ["configured", "warning"]}},
+            {"venue_state": {"$exists": False}},  # backwards compat: no field = show
+        ]
+    }
+
     if lat is not None and lng is not None:
-        query = {
-            "location": {
-                "$nearSphere": {
-                    "$geometry": {
-                        "type": "Point",
-                        "coordinates": [lng, lat],
-                    },
-                    "$maxDistance": radius_km * 1000,
-                }
+        query["location"] = {
+            "$nearSphere": {
+                "$geometry": {
+                    "type": "Point",
+                    "coordinates": [lng, lat],
+                },
+                "$maxDistance": radius_km * 1000,
             }
         }
-    else:
-        query = {}
 
     venues = await db.venues.find(query).to_list(200)
     return [_serialize_doc(v) for v in venues]
