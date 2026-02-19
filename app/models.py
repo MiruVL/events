@@ -5,6 +5,13 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
+class ContentType(str, Enum):
+    FIT_MARKDOWN = "fit_markdown"
+    RAW_MARKDOWN = "raw_markdown"
+    MARKDOWN_WITH_CITATIONS = "markdown_with_citations"
+    HTML = "html"
+
+
 class ScrapingStrategy(str, Enum):
     SCHEDULE = "schedule"
     LINK_GATHERING = "link_gathering"
@@ -66,6 +73,12 @@ class Venue(BaseModel):
     )
     scraping_strategy: Optional[ScrapingStrategy] = None
     scraping_instructions: Optional[str] = None
+    content_type: ContentType = Field(
+        default=ContentType.FIT_MARKDOWN,
+        description="Crawl output format. fit_markdown (default) strips boilerplate; "
+        "raw_markdown keeps full page; markdown_with_citations compacts URLs; "
+        "html preserves DOM structure.",
+    )
 
     # CSS selectors to narrow crawled content before LLM extraction
     schedule_css_selector: Optional[str] = Field(

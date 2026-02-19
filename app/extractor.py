@@ -1,13 +1,12 @@
-"""Extract structured event data from crawled content using a local LLM via LM Studio."""
+"""Extract structured event data from crawled content using a local LLM."""
 
 import asyncio
-import json
-import re
 import sys
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Literal, Optional, TypeVar
 
-import httpx
+from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from app.config import settings
 from app.models import Event
@@ -15,12 +14,53 @@ from app.models import Event
 PageType = Literal["schedule", "detail"]
 
 # ---------------------------------------------------------------------------
+# LLM client
+# ---------------------------------------------------------------------------
+
+_llm_client = AsyncOpenAI(
+    base_url=settings.llm_base_url,
+    api_key="lm-studio",
+    timeout=120.0,
+)
+
+# ---------------------------------------------------------------------------
+# LLM response schemas
+# ---------------------------------------------------------------------------
+
+
+class LLMEvent(BaseModel):
+    title: str
+    date: str
+    time_open: Optional[str] = None
+    time_start: Optional[str] = None
+    price: Optional[int] = None
+    price_text: Optional[str] = None
+    artists: list[str] = []
+    image_url: Optional[str] = None
+    detail_url: Optional[str] = None
+
+
+class EventExtractionResponse(BaseModel):
+    events: list[LLMEvent]
+
+
+class LLMLink(BaseModel):
+    url: str
+    title: Optional[str] = None
+    date: Optional[str] = None
+
+
+class LinkExtractionResponse(BaseModel):
+    links: list[LLMLink]
+
+
+# ---------------------------------------------------------------------------
 # System prompts
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT_SCHEDULE = """You are a data extraction assistant. You extract live music event information from Japanese live-house schedule pages.
 
-Given the content of a schedule page (markdown or structured JSON), extract ALL events into a JSON array — but ONLY from the main schedule section.
+Given the content of a schedule page (markdown or structured JSON), extract ALL events — but ONLY from the main schedule section.
 
 Main schedule section: the primary list or calendar that contains the most events and the most detail (dates, times, titles, links to detail pages). It is usually the central content, often under a heading like "SCHEDULE", "スケジュール", or the month name.
 
@@ -32,22 +72,21 @@ IGNORE and do NOT extract from:
 - Events that does not look like an event (e.g, hall rentals, etc.)
 
 For each event from the main schedule only, extract:
-- "title": event/show name (string)
-- "date": date in YYYY-MM-DD format (string)
+- "title": event/show name
+- "date": date in YYYY-MM-DD format
 - "time_open": door open time in HH:MM format or null
 - "time_start": show start time in HH:MM format or null
 - "price": advance ticket price in yen as integer, or null if not found
-- "price_text": original price text as written on the page (string or null)
-- "artists": array of performer/artist names (array of strings, can be empty)
-- "image_url": URL of the main event image or flyer (string or null). Look for img tags near the event info. If event has more than one image, use the first one.
-- "detail_url": link to event detail page if present (string or null)
+- "price_text": original price text as written on the page, or null
+- "artists": array of performer/artist names (can be empty)
+- "image_url": URL of the main event image or flyer, or null. Look for img tags near the event info. If event has more than one image, use the first one.
+- "detail_url": link to event detail page if present, or null
 
 Rules:
 - Dates: Convert Japanese date formats (e.g. 2月15日(土)) to YYYY-MM-DD. Use the current year if not specified.
 - Prices: Extract the advance/pre-sale price (前売) as the integer. Keep the full text in price_text.
 - Artists: List each performer separately. Split on common separators (/, ・, and, etc.)
-- If a field is not found, use null (not empty string).
-- Output ONLY the JSON array. No explanation, no markdown fences."""
+- If a field is not found, use null (not empty string)."""
 
 SYSTEM_PROMPT_DETAIL = """You are a data extraction assistant. You extract live music events from an event detail page or a day page.
 
@@ -63,149 +102,90 @@ IGNORE and do NOT extract as separate events:
 - Teaser/summary blocks that repeat events from elsewhere
 
 For each event, extract:
-- "title": event/show name (string)
-- "date": date in YYYY-MM-DD format (string)
+- "title": event/show name
+- "date": date in YYYY-MM-DD format
 - "time_open": door open time in HH:MM format or null
 - "time_start": show start time in HH:MM format or null
 - "price": advance ticket price in yen as integer, or null if not found
-- "price_text": original price text as written on the page (string or null)
-- "artists": array of performer/artist names (array of strings, can be empty)
-- "image_url": URL of the main event image or flyer (string or null)
+- "price_text": original price text as written on the page, or null
+- "artists": array of performer/artist names (can be empty)
+- "image_url": URL of the main event image or flyer, or null
 - "detail_url": this page's URL if you have it, or null
 
 Rules:
-- Output a JSON array with one or more events. No explanation, no markdown fences.
 - Prefer the most detailed, central content; ignore featured/related sections and ads."""
 
 SYSTEM_PROMPT_LINKS = """You are a data extraction assistant. You extract event detail page links from a live-house schedule page.
 
 Given the markdown content of a schedule page, find ALL links that point to individual event detail pages.
 
-For each link, return a JSON object with:
-- "url": the full URL of the event detail page (string)
-- "title": the event title associated with this link, if visible (string or null)
-- "date": the event date in YYYY-MM-DD format, if visible (string or null)
+For each link, extract:
+- "url": the full URL of the event detail page
+- "title": the event title associated with this link, if visible, or null
+- "date": the event date in YYYY-MM-DD format, if visible, or null
 
 Rules:
 - Only include links to event detail pages (individual show/event pages).
 - Do NOT include links to other months, archives, ticket purchase, social media, or external sites.
-- Convert relative URLs to absolute if you can determine the base URL from context.
-- Output ONLY a JSON array. No explanation, no markdown fences."""
+- Convert relative URLs to absolute if you can determine the base URL from context."""
 
 SYSTEM_PROMPT_COMBINED = """You are a data extraction assistant. You extract live music event information from combined content of multiple event detail pages from a Japanese live-house venue.
 
-The content below contains multiple event pages concatenated together, each separated by a marker. Extract ALL events into a single JSON array.
+The content below contains multiple event pages concatenated together, each separated by a marker. Extract ALL events.
 Ignore and do not extract events that does not look like an event (e.g, hall rentals, etc.)
+
 For each event, extract:
-- "title": event/show name (string)
-- "date": date in YYYY-MM-DD format (string)
+- "title": event/show name
+- "date": date in YYYY-MM-DD format
 - "time_open": door open time in HH:MM format or null
 - "time_start": show start time in HH:MM format or null
 - "price": advance ticket price in yen as integer, or null if not found
-- "price_text": original price text as written on the page (string or null)
-- "artists": array of performer/artist names (array of strings, can be empty)
-- "image_url": URL of the main event image or flyer (string or null)
-- "detail_url": the URL of the page this event came from (string or null)
+- "price_text": original price text as written on the page, or null
+- "artists": array of performer/artist names (can be empty)
+- "image_url": URL of the main event image or flyer, or null
+- "detail_url": the URL of the page this event came from, or null
 
 Rules:
 - Dates: Convert Japanese date formats (e.g. 2月15日(土)) to YYYY-MM-DD. Use the current year if not specified.
 - Prices: Extract the advance/pre-sale price (前売) as the integer. Keep the full text in price_text.
 - Artists: List each performer separately. Split on common separators (/, ・, and, etc.)
-- If a field is not found, use null (not empty string).
-- Output ONLY the JSON array. No explanation, no markdown fences."""
+- If a field is not found, use null (not empty string)."""
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-
-def _trim_markdown(markdown: str) -> str:
-    """Strip navigation, headers, and footers — keep only the schedule content."""
-    lines = markdown.split("\n")
-    start = 0
-    end = len(lines)
-
-    start_markers = ["**0", "* * *"]
-    schedule_heading = re.compile(r"^##\s*SCHEDULE\s*$", re.IGNORECASE)
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if schedule_heading.match(stripped):
-            start = i
-            break
-        if any(stripped.startswith(m) for m in start_markers):
-            start = i
-            break
-        if stripped == "---":
-            start = i
-            break
-
-    footer_markers = ["PAGETOP", "Copyright", "copyright", "©"]
-    for i in range(len(lines) - 1, start, -1):
-        if any(m in lines[i] for m in footer_markers):
-            end = i
-            break
-
-    trimmed = "\n".join(lines[start:end])
-    return trimmed
+_T = TypeVar("_T", bound=BaseModel)
 
 
-async def _call_llm(system_prompt: str, user_prompt: str) -> str:
-    """Send a chat completion request to the LLM and return the raw text response."""
-    url = f"{settings.llm_base_url}/chat/completions"
-    payload = {
-        "model": settings.llm_model,
-        "messages": [
+async def _call_llm_structured(
+    system_prompt: str,
+    user_prompt: str,
+    response_model: type[_T],
+) -> _T:
+    """Send a chat completion with structured output and return the parsed model."""
+    print(f"  Sending to {settings.llm_model} ({len(user_prompt)} chars prompt)...")
+
+    completion = await _llm_client.beta.chat.completions.parse(
+        model=settings.llm_model,
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": 0.1,
-        "stream": True,
-        "chat_template_kwargs": {"enable_thinking": False},
-    }
+        response_format=response_model,
+        temperature=0.1,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
 
-    print(f"  Sending to {settings.llm_model} ({len(user_prompt)} chars prompt)...")
+    result = completion.choices[0].message
 
-    raw_content = ""
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=30, read=120, write=30, pool=30)
-    ) as client:
-        try:
-            async with client.stream("POST", url, json=payload) as resp:
-                if resp.status_code != 200:
-                    body = await resp.aread()
-                    print(f"  LLM API error {resp.status_code}: {body.decode()}")
-                    resp.raise_for_status()
-                token_count = 0
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    chunk = line[6:]
-                    if chunk.strip() == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(chunk)
-                        choices = data.get("choices")
-                        if not choices:
-                            continue
-                        delta = choices[0].get("delta", {})
-                        text = delta.get("content", "")
-                        if text:
-                            raw_content += text
-                            token_count += 1
-                            if token_count % 100 == 0:
-                                print(f"  ... {token_count} tokens received", end="\r")
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        continue
-        except httpx.HTTPError as e:
-            print(f"  Connection error: {e}")
-            raise
+    if result.refusal:
+        raise ValueError(f"LLM refused the request: {result.refusal}")
+    if result.parsed is None:
+        raise ValueError(f"Failed to parse LLM response: {result.content}")
 
-    # Strip Qwen3 thinking tags if present
-    if "<think>" in raw_content:
-        raw_content = raw_content.split("</think>")[-1].strip()
-
-    print(f"  LLM response: {len(raw_content)} chars, ~{token_count} tokens")
-    return raw_content
+    print(f"  LLM response parsed successfully ({len(result.content or '')} chars)")
+    return result.parsed
 
 
 # ---------------------------------------------------------------------------
@@ -223,8 +203,6 @@ def _build_event_extraction_prompt(
     is_json: bool = False,
 ) -> str:
     """Build the user prompt for event extraction."""
-    if not is_json:
-        content = _trim_markdown(content)
 
     if page_type == "schedule":
         prompt = f"Extract all events from the main schedule section only (ignore featured/pickup/ads) for venue: {venue_name}\n\n"
@@ -246,7 +224,6 @@ def _build_event_extraction_prompt(
     else:
         prompt += f"Page content:\n\n{content}"
 
-    prompt += "\n\n/no_think"
     return prompt
 
 
@@ -267,7 +244,6 @@ def _build_combined_extraction_prompt(
     else:
         prompt += f"Combined page content:\n\n{combined_content}"
 
-    prompt += "\n\n/no_think"
     return prompt
 
 
@@ -278,9 +254,6 @@ def _build_link_extraction_prompt(
     is_json: bool = False,
 ) -> str:
     """Build the user prompt for link extraction from a schedule page."""
-    if not is_json:
-        content = _trim_markdown(content)
-
     prompt = f"Extract all event detail page links from the schedule for venue: {venue_name}\n\n"
 
     if extra_instructions:
@@ -291,7 +264,6 @@ def _build_link_extraction_prompt(
     else:
         prompt += f"Schedule page content:\n\n{content}"
 
-    prompt += "\n\n/no_think"
     return prompt
 
 
@@ -300,131 +272,27 @@ def _system_prompt_for(page_type: PageType) -> str:
 
 
 # ---------------------------------------------------------------------------
-# JSON parsing
-# ---------------------------------------------------------------------------
-
-
-def _repair_json(text: str) -> str:
-    """Attempt to fix common LLM JSON issues."""
-    text = re.sub(r",\s*([}\]])", r"\1", text)
-    open_brackets = text.count("[") - text.count("]")
-    open_braces = text.count("{") - text.count("}")
-    text = text.rstrip().rstrip(",")
-    text += "}" * max(0, open_braces)
-    text += "]" * max(0, open_brackets)
-    return text
-
-
-def _strip_markdown_fences(text: str) -> str:
-    """Remove markdown code fences the LLM may have added."""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:])
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-    return text
-
-
-def _parse_json_response(raw: str) -> list | dict | None:
-    """Parse a JSON response from the LLM, with repair fallback."""
-    text = _strip_markdown_fences(raw)
-
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError as e:
-        print(f"  JSON parse failed ({e}), attempting repair...")
-        repaired = _repair_json(text)
-        try:
-            result = json.loads(repaired)
-            print("  JSON repair succeeded.")
-            return result
-        except json.JSONDecodeError:
-            print("  JSON repair failed, trying partial extraction...")
-            partial = _extract_partial_json(text)
-            if partial is not None:
-                return partial
-            debug_path = "crawl_cache/_last_failed_llm_response.txt"
-            with open(debug_path, "w", encoding="utf-8") as f:
-                f.write(raw)
-            print(f"  Saved raw LLM response to {debug_path}")
-            return None
-
-
-def _parse_llm_response_as_events(raw: str, venue_id: str) -> list[Event]:
-    """Parse and validate LLM JSON response into Event objects."""
-    parsed = _parse_json_response(raw)
-    if parsed is None:
-        raise ValueError("Could not parse LLM response as JSON")
-
-    if isinstance(parsed, dict):
-        for key in ("events", "data", "results"):
-            if key in parsed:
-                parsed = parsed[key]
-                break
-        else:
-            parsed = [parsed]
-
-    if not isinstance(parsed, list):
-        raise ValueError(f"Expected a JSON array, got: {type(parsed)}")
-
-    events = []
-    now = datetime.now(timezone.utc)
-    for item in parsed:
-        try:
-            event = Event(
-                venue_id=venue_id,
-                title=item.get("title", "Unknown"),
-                date=item.get("date", ""),
-                time_open=item.get("time_open"),
-                time_start=item.get("time_start"),
-                price=item.get("price"),
-                price_text=item.get("price_text"),
-                artists=item.get("artists", []),
-                image_url=item.get("image_url"),
-                detail_url=item.get("detail_url"),
-                raw_text=json.dumps(item, ensure_ascii=False),
-                scraped_at=now,
-            )
-            events.append(event)
-        except Exception as e:
-            print(f"  Warning: skipped invalid event: {e}")
-            continue
-
-    return events
-
-
-def _extract_partial_json(text: str) -> list | None:
-    """Try to extract individual JSON objects from a broken array."""
-    results = []
-    depth = 0
-    start = None
-    for i, ch in enumerate(text):
-        if ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0 and start is not None:
-                fragment = text[start : i + 1]
-                try:
-                    obj = json.loads(fragment)
-                    if isinstance(obj, dict) and "title" in obj:
-                        results.append(obj)
-                except json.JSONDecodeError:
-                    pass
-                start = None
-    if results:
-        print(f"  Partial extraction recovered {len(results)} events.")
-        return results
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Public extraction functions
 # ---------------------------------------------------------------------------
+
+
+def _llm_events_to_events(llm_events: list[LLMEvent], venue_id: str) -> list[Event]:
+    """Convert LLM response events to Event model instances."""
+    now = datetime.now(timezone.utc)
+    events = []
+    for e in llm_events:
+        try:
+            events.append(
+                Event(
+                    venue_id=venue_id,
+                    raw_text=e.model_dump_json(),
+                    scraped_at=now,
+                    **e.model_dump(),
+                )
+            )
+        except Exception as exc:
+            print(f"  Warning: skipped invalid event: {exc}")
+    return events
 
 
 async def extract_events(
@@ -441,8 +309,7 @@ async def extract_events(
     Send page content to LLM and parse structured event data.
 
     Args:
-        content: Page content — markdown string or JSON string (when
-            JsonCssExtractionStrategy was used).
+        content: Page content — markdown, HTML, or JSON string.
         venue_id: MongoDB ObjectId of the venue (as string).
         venue_name: Name of the venue (for the prompt).
         extra_instructions: Optional per-venue scraping notes.
@@ -465,8 +332,10 @@ async def extract_events(
     )
     system_content = _system_prompt_for(page_type)
 
-    raw = await _call_llm(system_content, user_prompt)
-    events = _parse_llm_response_as_events(raw, venue_id)
+    response = await _call_llm_structured(
+        system_content, user_prompt, EventExtractionResponse
+    )
+    events = _llm_events_to_events(response.events, venue_id)
     print(f"  Extracted {len(events)} events")
     return events
 
@@ -498,8 +367,10 @@ async def extract_events_combined(
         combined_content, venue_name, extra_instructions, is_json=is_json
     )
 
-    raw = await _call_llm(SYSTEM_PROMPT_COMBINED, user_prompt)
-    events = _parse_llm_response_as_events(raw, venue_id)
+    response = await _call_llm_structured(
+        SYSTEM_PROMPT_COMBINED, user_prompt, EventExtractionResponse
+    )
+    events = _llm_events_to_events(response.events, venue_id)
     print(f"  Extracted {len(events)} events from combined content")
     return events
 
@@ -514,7 +385,7 @@ async def extract_links(
     Extract event detail page links from a schedule page via LLM.
 
     Args:
-        content: Schedule page content (markdown or JSON).
+        content: Schedule page content (markdown, HTML, or JSON).
         venue_name: Name of the venue.
         extra_instructions: Optional per-venue scraping notes.
         is_json: True when content is JSON from JsonCssExtractionStrategy.
@@ -523,29 +394,13 @@ async def extract_links(
         List of dicts with at least "url" key, and optional "title" / "date".
     """
     user_prompt = _build_link_extraction_prompt(
-        content, venue_name, extra_instructions, is_json=is_json
+        content, venue_name, extra_instructions, is_json=is_json,
     )
 
-    raw = await _call_llm(SYSTEM_PROMPT_LINKS, user_prompt)
-    parsed = _parse_json_response(raw)
-
-    if parsed is None:
-        print("  Failed to parse link extraction response")
-        return []
-
-    if isinstance(parsed, dict):
-        for key in ("links", "urls", "data", "results"):
-            if key in parsed:
-                parsed = parsed[key]
-                break
-        else:
-            parsed = [parsed]
-
-    if not isinstance(parsed, list):
-        print(f"  Expected a JSON array of links, got: {type(parsed)}")
-        return []
-
-    links = [item for item in parsed if isinstance(item, dict) and item.get("url")]
+    response = await _call_llm_structured(
+        SYSTEM_PROMPT_LINKS, user_prompt, LinkExtractionResponse
+    )
+    links = [link.model_dump() for link in response.links]
     print(f"  Extracted {len(links)} event links")
     return links
 

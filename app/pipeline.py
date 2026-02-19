@@ -106,6 +106,7 @@ async def _run_schedule_strategy(
     instructions = venue.get("scraping_instructions")
     css_selector = venue.get("schedule_css_selector")
     json_css_schema = venue.get("schedule_json_css_schema")
+    content_type = venue.get("content_type", "fit_markdown")
     is_json = json_css_schema is not None
 
     templated = _url_is_templated(schedule_url_template)
@@ -133,6 +134,7 @@ async def _run_schedule_strategy(
             cache_key_suffix=cache_key_suffix,
             css_selector=css_selector,
             json_css_schema=json_css_schema,
+            content_type=content_type,
         )
 
         month_events = await extract_events(
@@ -205,6 +207,7 @@ async def _run_link_gathering_strategy(
     schedule_json_css_schema = venue.get("schedule_json_css_schema")
     detail_css_selector = venue.get("detail_css_selector")
     detail_json_css_schema = venue.get("detail_json_css_schema")
+    content_type = venue.get("content_type", "fit_markdown")
     skip_llm_for_links = venue.get("skip_llm_for_links", False)
     detail_is_json = detail_json_css_schema is not None
     schedule_is_json = schedule_json_css_schema is not None
@@ -235,6 +238,7 @@ async def _run_link_gathering_strategy(
             cache_key_suffix=cache_key_suffix,
             css_selector=schedule_css_selector,
             json_css_schema=schedule_json_css_schema,
+            content_type=content_type,
         )
 
         # Step 2: Extract links
@@ -247,7 +251,7 @@ async def _run_link_gathering_strategy(
             print(f"  [{venue_name}] Parsed {len(detail_urls)} links directly (no LLM).")
         else:
             link_results = await extract_links(
-                schedule_content, venue_name, instructions, is_json=schedule_is_json
+                schedule_content, venue_name, instructions, is_json=schedule_is_json,
             )
             detail_urls = [lr["url"] for lr in link_results if lr.get("url")]
             print(f"  [{venue_name}] LLM extracted {len(detail_urls)} links.")
@@ -263,6 +267,7 @@ async def _run_link_gathering_strategy(
             use_cache=use_cache,
             css_selector=detail_css_selector,
             json_css_schema=detail_json_css_schema,
+            content_type=content_type,
         )
 
         # Step 4: Combine into one document
