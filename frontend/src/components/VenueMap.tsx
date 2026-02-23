@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from "react-leaf
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Venue } from "../types";
+import { useTranslation } from "../i18n";
 
 // Fix default marker icons (Leaflet + bundler issue)
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -63,6 +64,7 @@ function BoundsWatcher({ onBoundsChange }: { onBoundsChange: (bounds: MapBounds)
 }
 
 export default function VenueMap({ venues, onBoundsChange }: VenueMapProps) {
+  const { t } = useTranslation();
   const venuesWithLocation = venues.filter(
     (v) => v.location && v.location.coordinates
   );
@@ -101,7 +103,7 @@ export default function VenueMap({ venues, onBoundsChange }: VenueMapProps) {
             {venue.rating && (
               <>
                 <br />
-                Rating: {venue.rating}
+                {t.rating} {venue.rating}
               </>
             )}
           </Popup>

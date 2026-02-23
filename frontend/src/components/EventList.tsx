@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Event } from "../types";
+import { useTranslation } from "../i18n";
 
 interface EventListProps {
   events: Event[];
@@ -7,14 +8,15 @@ interface EventListProps {
 }
 
 export default function EventList({ events, loading }: EventListProps) {
+  const { t } = useTranslation();
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   if (loading) {
-    return <div className="loading">Loading events...</div>;
+    return <div className="loading">{t.loading}</div>;
   }
 
   if (events.length === 0) {
-    return <div className="empty">No events found.</div>;
+    return <div className="empty">{t.noEvents}</div>;
   }
 
   // Group events by date
@@ -41,7 +43,7 @@ export default function EventList({ events, loading }: EventListProps) {
       <div className="event-grid-wrapper">
         {Object.entries(grouped).map(([date, dateEvents]) => (
           <div key={date} className="date-group">
-            <h2 className="date-heading">{formatDateHeading(date)}</h2>
+            <h2 className="date-heading">{formatDateHeading(date, t.dowLong)}</h2>
             <div className="event-grid">
               {dateEvents.map((event) => (
                 <div key={event.id} className="event-card">
@@ -57,7 +59,7 @@ export default function EventList({ events, loading }: EventListProps) {
                       {String(Number(event.date.slice(8, 10))).padStart(2, "0")}
                     </span>
                     <span className="card-date-dow">
-                      {getDow(event.date)}
+                      {getDow(event.date, t.dowShort)}
                     </span>
                   </div>
 
@@ -104,8 +106,8 @@ export default function EventList({ events, loading }: EventListProps) {
                     <div className="card-meta">
                       {event.time_open && (
                         <span className="card-time">
-                          OPEN {event.time_open}
-                          {event.time_start && ` / START ${event.time_start}`}
+                          {t.open} {event.time_open}
+                          {event.time_start && ` / ${t.start} ${event.time_start}`}
                         </span>
                       )}
                       {event.price_text && (
@@ -123,21 +125,12 @@ export default function EventList({ events, loading }: EventListProps) {
   );
 }
 
-function getDow(dateStr: string): string {
+function getDow(dateStr: string, labels: string[]): string {
   const d = new Date(dateStr + "T00:00:00");
-  return ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][d.getDay()];
+  return labels[d.getDay()];
 }
 
-function formatDateHeading(dateStr: string): string {
+function formatDateHeading(dateStr: string, dayNames: string[]): string {
   const d = new Date(dateStr + "T00:00:00");
-  const days = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-  ];
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")} ${days[d.getDay()]}`;
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")} ${dayNames[d.getDay()]}`;
 }

@@ -5,9 +5,11 @@ import type { MapBounds } from "./components/VenueMap";
 import Filters from "./components/Filters";
 import EventList from "./components/EventList";
 import VenueMap from "./components/VenueMap";
+import { useTranslation } from "./i18n";
 import "./App.css";
 
 export default function App() {
+  const { t, locale, setLocale } = useTranslation();
   const [venues, setVenues] = useState<Venue[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,6 +18,10 @@ export default function App() {
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     return { date_from: today };
   });
+
+  useEffect(() => {
+    document.title = t.htmlTitle;
+  }, [t.htmlTitle]);
 
   const [mapOpen, setMapOpen] = useState(false);
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
@@ -64,7 +70,22 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Live Events</h1>
+        <h1>{t.pageTitle}</h1>
+        <div className="lang-toggle">
+          <button
+            className={locale === "en" ? "lang-active" : ""}
+            onClick={() => setLocale("en")}
+          >
+            EN
+          </button>
+          <span className="lang-sep">|</span>
+          <button
+            className={locale === "ja" ? "lang-active" : ""}
+            onClick={() => setLocale("ja")}
+          >
+            JA
+          </button>
+        </div>
       </header>
 
       <Filters venues={venues} onApply={setFilters} />
@@ -75,14 +96,14 @@ export default function App() {
           className={`map-toggle ${mapOpen ? "active" : ""}`}
           onClick={() => setMapOpen((v) => !v)}
         >
-          {mapOpen ? "Hide Map" : "Show Map"}
+          {mapOpen ? t.hideMap : t.showMap}
         </button>
 
         {mapOpen && (
           <div className="map-container">
             <VenueMap venues={venues} onBoundsChange={handleBoundsChange} />
             <div className="map-hint">
-              Pan &amp; zoom to filter events by area
+              {t.mapHint}
             </div>
           </div>
         )}

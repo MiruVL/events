@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { EventFilters, Venue } from "../types";
+import { useTranslation } from "../i18n";
 
 interface FiltersProps {
   venues: Venue[];
@@ -12,6 +13,7 @@ function todayStr(): string {
 }
 
 export default function Filters({ venues, onApply }: FiltersProps) {
+  const { t } = useTranslation();
   const [venueId, setVenueId] = useState("");
   const [dateFrom, setDateFrom] = useState(todayStr());
   const [dateTo, setDateTo] = useState("");
@@ -47,7 +49,7 @@ export default function Filters({ venues, onApply }: FiltersProps) {
       <div className="filter-row">
         <input
           type="text"
-          placeholder="Search title or artist..."
+          placeholder={t.searchPlaceholder}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="filter-search"
@@ -56,7 +58,7 @@ export default function Filters({ venues, onApply }: FiltersProps) {
 
       <div className="filter-row">
         <select value={venueId} onChange={(e) => setVenueId(e.target.value)}>
-          <option value="">All venues</option>
+          <option value="">{t.allVenues}</option>
           {venues.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
@@ -68,20 +70,20 @@ export default function Filters({ venues, onApply }: FiltersProps) {
           type="date"
           value={dateFrom}
           onChange={(e) => setDateFrom(e.target.value)}
-          placeholder="From"
+          placeholder={t.from}
         />
         <input
           type="date"
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
-          placeholder="To"
+          placeholder={t.to}
         />
       </div>
 
       <div className="filter-row">
         <input
           type="number"
-          placeholder="Min price (¥)"
+          placeholder={t.minPrice}
           value={priceMin}
           onChange={(e) => setPriceMin(e.target.value)}
           min={0}
@@ -89,15 +91,15 @@ export default function Filters({ venues, onApply }: FiltersProps) {
         />
         <input
           type="number"
-          placeholder="Max price (¥)"
+          placeholder={t.maxPrice}
           value={priceMax}
           onChange={(e) => setPriceMax(e.target.value)}
           min={0}
           step={500}
         />
-        <button type="submit">Filter</button>
+        <button type="submit">{t.filter}</button>
         <button type="button" onClick={handleReset} className="btn-reset">
-          Reset
+          {t.reset}
         </button>
       </div>
     </form>
