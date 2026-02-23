@@ -5,6 +5,7 @@ import type { MapBounds } from "./components/VenueMap";
 import Filters from "./components/Filters";
 import EventList from "./components/EventList";
 import VenueMap from "./components/VenueMap";
+import About from "./components/About";
 import { useTranslation } from "./i18n";
 import "./App.css";
 
@@ -18,6 +19,8 @@ export default function App() {
     const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     return { date_from: today };
   });
+
+  const [page, setPage] = useState<"events" | "about">("events");
 
   useEffect(() => {
     document.title = t.htmlTitle;
@@ -70,48 +73,66 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>{t.pageTitle}</h1>
-        <div className="lang-toggle">
+        <h1
+          className="app-header-title"
+          onClick={() => setPage("events")}
+        >
+          {t.pageTitle}
+        </h1>
+        <nav className="app-header-nav">
           <button
-            className={locale === "en" ? "lang-active" : ""}
-            onClick={() => setLocale("en")}
+            className="nav-link"
+            onClick={() => setPage("about")}
           >
-            EN
+            {t.about}
           </button>
-          <span className="lang-sep">|</span>
-          <button
-            className={locale === "ja" ? "lang-active" : ""}
-            onClick={() => setLocale("ja")}
-          >
-            JA
-          </button>
-        </div>
+          <div className="lang-toggle">
+            <button
+              className={locale === "en" ? "lang-active" : ""}
+              onClick={() => setLocale("en")}
+            >
+              <span className="lang-flag">🇬🇧</span> EN
+            </button>
+            <span className="lang-sep">|</span>
+            <button
+              className={locale === "ja" ? "lang-active" : ""}
+              onClick={() => setLocale("ja")}
+            >
+              <span className="lang-flag">🇯🇵</span> JA
+            </button>
+          </div>
+        </nav>
       </header>
 
-      <Filters venues={venues} onApply={setFilters} />
+      {page === "about" ? (
+        <About onBack={() => setPage("events")} />
+      ) : (
+        <>
+          <Filters venues={venues} onApply={setFilters} />
 
-      {/* Map toggle + collapsible map */}
-      <div className="map-section">
-        <button
-          className={`map-toggle ${mapOpen ? "active" : ""}`}
-          onClick={() => setMapOpen((v) => !v)}
-        >
-          {mapOpen ? t.hideMap : t.showMap}
-        </button>
+          <div className="map-section">
+            <button
+              className={`map-toggle ${mapOpen ? "active" : ""}`}
+              onClick={() => setMapOpen((v) => !v)}
+            >
+              {mapOpen ? t.hideMap : t.showMap}
+            </button>
 
-        {mapOpen && (
-          <div className="map-container">
-            <VenueMap venues={venues} onBoundsChange={handleBoundsChange} />
-            <div className="map-hint">
-              {t.mapHint}
-            </div>
+            {mapOpen && (
+              <div className="map-container">
+                <VenueMap venues={venues} onBoundsChange={handleBoundsChange} />
+                <div className="map-hint">
+                  {t.mapHint}
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <main className="app-main">
-        <EventList events={displayedEvents} loading={loading} />
-      </main>
+          <main className="app-main">
+            <EventList events={displayedEvents} loading={loading} />
+          </main>
+        </>
+      )}
     </div>
   );
 }

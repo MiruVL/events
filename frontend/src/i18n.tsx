@@ -21,6 +21,14 @@ export interface Translations {
   rating: string;
   dowShort: string[];
   dowLong: string[];
+  about: string;
+  backToEvents: string;
+  aboutGreeting: string;
+  aboutIntro: string;
+  aboutProject: string;
+  aboutFuture: string;
+  aboutGithub: string;
+  aboutEmail: string;
 }
 
 const en: Translations = {
@@ -52,6 +60,17 @@ const en: Translations = {
     "Friday",
     "Saturday",
   ],
+  about: "About",
+  backToEvents: "Back to Events",
+  aboutGreeting: "Hello! My name is Vladimir.",
+  aboutIntro:
+    "I frequently attend live house shows in Tokyo and wanted a better way to keep track of upcoming events across different venues.",
+  aboutProject:
+    "So I built this aggregation app -- it lets me add venues and automatically pulls information about their upcoming events into one place.",
+  aboutFuture:
+    "This is a personal project for now, but I plan to keep developing it and expand to more locations over time.",
+  aboutGithub: "GitHub",
+  aboutEmail: "Email",
 };
 
 const ja: Translations = {
@@ -83,6 +102,17 @@ const ja: Translations = {
     "金曜日",
     "土曜日",
   ],
+  about: "About",
+  backToEvents: "イベント一覧へ戻る",
+  aboutGreeting: "はじめまして！ウラジーミルと申します。",
+  aboutIntro:
+    "東京のライブハウスによく足を運んでおり、各会場のイベント情報をもっと簡単に把握したいと思っていました。",
+  aboutProject:
+    "そこで、この集約アプリを作りました。会場を登録すると、今後のイベント情報を自動で取得し、一覧で確認できます。",
+  aboutFuture:
+    "現在は個人プロジェクトですが、今後も開発を続け、対応エリアを拡大していく予定です。",
+  aboutGithub: "GitHub",
+  aboutEmail: "メール",
 };
 
 export type Locale = "en" | "ja";

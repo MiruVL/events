@@ -19,11 +19,33 @@
   margin-bottom: 1rem;
 }
 
-.app-header h1 {
+.app-header-title {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
   color: #fff;
+  cursor: pointer;
+}
+
+.app-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-link {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.nav-link:hover {
+  color: #e0e0e0;
 }
 
 .lang-toggle {
@@ -42,6 +64,14 @@
   padding: 0.25rem 0.4rem;
   border-radius: 3px;
   transition: color 0.15s, background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.lang-flag {
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
 .lang-toggle button:hover {
@@ -400,4 +430,63 @@
   padding: 3rem;
   color: #666;
   font-size: 0.95rem;
+}
+
+/* ── About Page ─────────────────────────────────────── */
+
+.about-page {
+  padding: 1rem 0 3rem;
+}
+
+.about-back {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 2rem;
+  transition: color 0.15s;
+}
+
+.about-back:hover {
+  color: #e0e0e0;
+}
+
+.about-card {
+  max-width: 600px;
+}
+
+.about-greeting {
+  margin: 0 0 1.25rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.about-card p {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #bbb;
+}
+
+.about-links {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #222;
+}
+
+.about-links a {
+  color: #888;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.about-links a:hover {
+  color: #fff;
 }
